@@ -1,4 +1,4 @@
-# Multi-Modal Evidence Review — Code
+# Multi-Modal Evidence Review: Code
 
 ## Overview
 This pipeline reads insurance-style damage claims (car / laptop / package), analyzes submitted images and conversation text using a vision-language model, and produces structured verdicts in `output.csv` matching the schema defined in `problem_statement.md`.
