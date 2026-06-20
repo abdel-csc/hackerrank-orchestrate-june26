@@ -82,6 +82,26 @@ Per-field accuracy from the locked prompt version, measured against `dataset/sam
 - **supporting_image_ids**: which specific image(s) the final decision is grounded in. `none` if no single image directly backs the verdict.
 - **risk_flags**: this is where fraud-adjacent and quality concerns actually live — `possible_manipulation`, `non_original_image`, and `claim_mismatch` specifically flag authenticity/fraud-relevant signals; `blurry_image`, `wrong_angle`, `cropped_or_obstructed` flag image quality issues; `user_history_risk` and `manual_review_required` flag account-history-based risk context. A row can have `risk_flags: none` even when other fields are `unknown` — uncertainty about a specific field is not the same as a fraud risk.
 
+## Operational Analysis
+
+**Final strategy used for output.csv**: `auto` (Groq primary, automatic per-claim fallback to OpenRouter on rate-limit exhaustion). In the final 44-row run, Groq successfully handled every claim directly — the OpenRouter fallback path was implemented, tested, and available, but not actually invoked in that run since Groq had sufficient remaining capacity at the time.
+
+**Model calls**: 44 total for the final submission run (1 call per claim, all images for a claim sent in a single multi-image call).
+
+**Token usage**: ~6,000-7,000 tokens per claim observed in practice (system prompt + image data + claim context). Groq's free-tier daily cap (500,000 tokens/day, rolling 24-hour window) was hit multiple times during development due to iterative testing and prompt tuning — confirmed directly from Groq's own error responses (e.g. `"Limit 500000, Used 499999, Requested 6238"`).
+
+**Approximate cost**: $0.00. Both providers used (Groq and OpenRouter) were accessed via free-tier API keys; no paid usage was incurred.
+
+**Runtime**: the final 44-row run (37 newly processed + 7 resumed from a prior partial run) completed in approximately 10 minutes using Strategy A (Groq) with no artificial per-call delay.
+
+**TPM/RPM/TPD considerations**:
+- Groq: ~500,000 tokens/day on a rolling 24-hour window (not a clean midnight reset) — this was the binding constraint for most of development, requiring the incremental-save + auto-fallback design to avoid losing progress.
+- OpenRouter: 16 requests/minute and approximately 50 requests/day on the free tier — sufficient for small-scale comparison testing, not for full-dataset runs at this claim volume.
+
+**Strategy comparison — A vs B**: Strategy A (Groq, `llama-4-scout-17b-16e-instruct`) was evaluated on the full 20-row sample set (see Evaluation Summary above). Strategy B (OpenRouter, `google/gemma-4-31b-it:free`) only completed 2 real results before exhausting its daily cap during testing — too small a sample for a statistically meaningful accuracy comparison, though it confirmed functional correctness (successful structured JSON extraction, correct image handling) before the quota wall was hit.
+
+**Provider selection note**: Anthropic's Claude API was considered as a candidate vision-language provider during planning, but was deprioritized in favor of genuinely free-tier providers (Groq, OpenRouter) given the hackathon's fixed time window and the per-token billing cost of a paid API at this claim/image volume. This kept operational cost at $0 while allowing rapid, repeated iteration during prompt development without budget risk.
+
 **Design principle**: the system is intentionally calibrated to output `unknown` or `not_enough_information` rather than fabricate a confident-sounding answer when evidence is weak or absent. Fraud/authenticity concerns are tracked separately and explicitly via `risk_flags`, not inferred from uncertainty in other fields. 
 
 **Misc Considerations**: I was considering of adding a hosting to this, but this is  not a particularly 'traditional' hackathon. It's really just an evaluation of training. I was also looking into putting the notes of severity with justifications, but it's probably better here, so that people are able to reference documentation to and from. 
